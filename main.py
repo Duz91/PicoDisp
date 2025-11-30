@@ -328,9 +328,11 @@ def draw_header(fb, price):
 
 def draw_footer(fb, last_update):
     if last_update:
-        hh, mm, ss = last_update[3], last_update[4], last_update[5]
-        fb.text(f"Stand: {hh:02}:{mm:02}:{ss:02}", 6, EPD_HEIGHT - 14, FG_COLOR)
-
+        yyyy, mo, dd, hh, mm, ss = (
+            last_update[0], last_update[1], last_update[2],
+            last_update[3], last_update[4], last_update[5],
+        )
+        fb.text(f"Stand: {yyyy:04}-{mo:02}-{dd:02} {hh:02}:{mm:02}:{ss:02}", 6, EPD_HEIGHT - 14, FG_COLOR)
 
 def show_message(display, lines):
     display.fb.fill(BG_COLOR)
