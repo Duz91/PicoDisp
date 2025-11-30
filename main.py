@@ -219,7 +219,7 @@ def draw_chart(fb, history, span_label):
     step_x = chart_width / max(1, points - 1)
     y_step = _nice_step(span)
     _draw_y_grid(fb, chart_left, chart_top, chart_width, chart_height, min_val, max_val, y_step)
-    _draw_x_grid(fb, chart_left, chart_top, chart_height, step_x, points)
+    _draw_x_grid(fb, chart_left, chart_top, chart_height, step_x, points, span_label)
 
     prev_x = chart_left
     prev_y = chart_top + chart_height - _scale(history.data[0], min_val, span, chart_height)
@@ -288,11 +288,13 @@ def _draw_y_grid(fb, left, top, width, height, min_val, max_val, step):
         y += step
 
 
-def _draw_x_grid(fb, left, top, height, step_x, points):
-    # Zeichne ~6 vertikale Gitterlinien (falls genug Punkte vorhanden)
+def _draw_x_grid(fb, left, top, height, step_x, points, span_label):
+    # Zeichne vertikale Gitterlinien:
+    # - 365d: 12 Linien (~1 pro Monat)
+    # - sonst: ~6 Linien
     if points < 2:
         return
-    desired_lines = 6
+    desired_lines = 12 if span_label == "365d" else 6
     step_points = max(1, points // desired_lines)
     for idx in range(step_points, points, step_points):
         x = int(left + idx * step_x)
