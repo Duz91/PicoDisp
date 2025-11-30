@@ -40,6 +40,8 @@ LOOP_SLEEP_SECONDS = 5  # Hauptschleifen-Schlafdauer, um Screens zu wechseln
 HISTORY_LENGTH_24H = 96  # ~96 Punkte (15min Raster)
 HISTORY_LENGTH_365D = 365  # Grobe Tagespunkte (oder weniger)
 HISTORY_FETCH_TIMEOUT = 8  # Sekunden, um Startblocker zu vermeiden
+NTP_RETRIES = 3
+NTP_HOST = "pool.ntp.org"
 
 
 class RingBuffer:
@@ -76,6 +78,26 @@ def _set_default_socket_timeout(seconds):
         usocket.setdefaulttimeout(seconds)
     except Exception as exc:
         log(f"Konnte Socket-Timeout nicht setzen: {exc}")
+
+
+def sync_time():
+    """Synchronisiert die RTC per NTP, falls verfügbar."""
+    try:
+        import ntptime  # type: ignore
+    except ImportError:
+        log("ntptime-Modul nicht verfügbar, überspringe Zeitabgleich")
+        return
+
+    ntptime.host = NTP_HOST
+    for attempt in range(1, NTP_RETRIES + 1):
+        try:
+            ntptime.settime()
+            log(f"NTP-Sync erfolgreich (Versuch {attempt})")
+            return
+        except Exception as exc:
+            log(f"NTP-Sync fehlgeschlagen (Versuch {attempt}): {exc}")
+            time.sleep(1)
+    log("NTP-Sync endgültig fehlgeschlagen, verwende lokale Zeit")
 
 
 def connect_wifi():
@@ -346,6 +368,7 @@ def show_message(display, lines):
 def main():
     _set_default_socket_timeout(HISTORY_FETCH_TIMEOUT)
     wlan = connect_wifi()
+    sync_time()
     display = create_display()
     history_24h = RingBuffer(HISTORY_LENGTH_24H)
     history_365d = RingBuffer(HISTORY_LENGTH_365D)
