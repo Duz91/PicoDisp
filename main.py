@@ -80,6 +80,50 @@ def _set_default_socket_timeout(seconds):
         log(f"Konnte Socket-Timeout nicht setzen: {exc}")
 
 
+# --- Zeitzone Europe/Berlin (MEZ/MESZ) ---
+def _weekday(year, month, day):
+    """Wochentag nach Sakamoto (0=Sonntag, 1=Montag, ... 6=Samstag)."""
+    t = [0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4]
+    if month < 3:
+        year -= 1
+    return (year + year // 4 - year // 100 + year // 400 + t[month - 1] + day) % 7
+
+
+def _last_sunday(year, month):
+    """Tag des letzten Sonntags im Monat."""
+    last_day = 31
+    while last_day > 27:  # alle relevanten Monate haben >=28 Tage
+        if _weekday(year, month, last_day) == 0:
+            return last_day
+        last_day -= 1
+    return last_day
+
+
+def _berlin_offset_seconds(utc_tuple):
+    """UTC-Offset (Sekunden) für Europe/Berlin inkl. Sommerzeit."""
+    year, month, day, hour = utc_tuple[0], utc_tuple[1], utc_tuple[2], utc_tuple[3]
+    last_sun_mar = _last_sunday(year, 3)
+    last_sun_oct = _last_sunday(year, 10)
+    dst = False
+    if 4 <= month <= 9:
+        dst = True
+    elif month == 3:
+        if day > last_sun_mar or (day == last_sun_mar and hour >= 2):
+            dst = True
+    elif month == 10:
+        if day < last_sun_oct or (day == last_sun_oct and hour < 3):
+            dst = True
+    return 7200 if dst else 3600
+
+
+def _now_local_berlin():
+    """Lokale Zeit Europe/Berlin als time.localtime()-Tuple."""
+    utc = time.localtime()
+    offset = _berlin_offset_seconds(utc)
+    ts = time.mktime(utc) + offset
+    return time.localtime(ts)
+
+
 def sync_time():
     """Synchronisiert die RTC per NTP, falls verfügbar."""
     try:
@@ -304,7 +348,7 @@ def _draw_y_grid(fb, left, top, width, height, min_val, max_val, step):
     label_x = 4  # fester linker Rand für Y-Beschriftung, unabhängig vom Chart-Offset
     while y <= max_val:
         offset = _scale(y, min_val, max(max_val - min_val, 1e-6), height)
-        fb.hline(left, top + height - offset, width, FG_COLOR)
+        _hline_dashed(fb, left, top + height - offset, width, FG_COLOR)
         label = _format_k(y)
         fb.text(label, label_x, top + height - offset - 4, FG_COLOR)
         y += step
@@ -320,7 +364,27 @@ def _draw_x_grid(fb, left, top, height, step_x, points, span_label):
     step_points = max(1, points // desired_lines)
     for idx in range(step_points, points, step_points):
         x = int(left + idx * step_x)
-        fb.vline(x, top, height, FG_COLOR)
+        _vline_dashed(fb, x, top, height, FG_COLOR)
+
+
+def _hline_dashed(fb, x, y, length, color, dash=3, gap=2):
+    """Zeichnet gestrichelte horizontale Linie."""
+    pos = x
+    end = x + length
+    while pos < end:
+        run = min(dash, end - pos)
+        fb.hline(pos, y, run, color)
+        pos += dash + gap
+
+
+def _vline_dashed(fb, x, y, length, color, dash=3, gap=2):
+    """Zeichnet gestrichelte vertikale Linie."""
+    pos = y
+    end = y + length
+    while pos < end:
+        run = min(dash, end - pos)
+        fb.vline(x, pos, run, color)
+        pos += dash + gap
 
 
 def draw_text_scaled(fb, text, x, y, scale=2, color=FG_COLOR, bg=None):
@@ -399,7 +463,7 @@ def main():
     current_price = fetch_price_eur()
     now_ms = time.ticks_ms()
     last_price_ms = now_ms
-    last_update = time.localtime()
+    last_update = _now_local_berlin()
     history_24h.append(current_price)
     history_365d.append(current_price)
 
@@ -418,7 +482,7 @@ def main():
             if price_due or swap_due:
                 current_price = fetch_price_eur()
                 last_price_ms = time.ticks_ms()
-                last_update = time.localtime()
+                last_update = _now_local_berlin()
                 history_24h.append(current_price)
                 history_365d.append(current_price)
                 log(
