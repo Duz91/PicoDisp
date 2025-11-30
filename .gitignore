@@ -1,0 +1,7 @@
+# Local secrets for Wi-Fi (copy secrets.example.py to secrets.py and fill in)
+secrets.py
+
+# Bytecode / editor cruft
+*.pyc
+__pycache__/
+.DS_Store
