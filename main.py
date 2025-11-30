@@ -206,7 +206,7 @@ def draw_chart(fb, history, span_label):
     chart_left = 55
     chart_top = 34
     chart_width = EPD_WIDTH - chart_left - 6
-    chart_height = 60
+    chart_height = 64
     points = len(history.data)
 
     fb.rect(chart_left - 1, chart_top - 1, chart_width + 2, chart_height + 2, FG_COLOR)
@@ -230,9 +230,9 @@ def draw_chart(fb, history, span_label):
         fb.line(prev_x, prev_y, x, y, FG_COLOR)
         prev_x, prev_y = x, y
 
-    fb.text(f"Min {min_val:.0f} EUR", chart_left, chart_top + chart_height + 8, FG_COLOR)
-    fb.text(f"Max {max_val:.0f} EUR", chart_left + 110, chart_top + chart_height + 8, FG_COLOR)
-    fb.text(span_label, chart_left + chart_width - 36, chart_top - 10, FG_COLOR)
+    fb.text(f"Min {min_val:.0f} EUR", chart_left, chart_top + chart_height + 4, FG_COLOR)
+    fb.text(f"Max {max_val:.0f} EUR", chart_left + 110, chart_top + chart_height + 4, FG_COLOR)
+    fb.text(span_label, chart_left + chart_width - 36, chart_top - 9, FG_COLOR)
 
 
 def _scale(value, min_val, span, height):
@@ -320,23 +320,16 @@ def draw_text_scaled(fb, text, x, y, scale=2, color=FG_COLOR, bg=None):
 
 
 def draw_header(fb, price):
-    fb.fill_rect(0, 0, EPD_WIDTH, 30, BG_COLOR)
-    fb.text("BTC/EUR", 6, 8, FG_COLOR)
+    fb.fill_rect(0, 0, EPD_WIDTH, 23, FG_COLOR)
+    fb.text("BTC/EUR", 6, 8, BG_COLOR)
     # Bewusst weißer Hintergrund, damit der Preis unabhängig von Display-Inversion sichtbar ist
     draw_text_scaled(fb, f"{price:,.0f} EUR", 120, 5, scale=2, color=FG_COLOR, bg=BG_COLOR)
 
 
 def draw_footer(fb, last_update):
     if last_update:
-        yyyy, mo, dd, hh, mm, ss = (
-            last_update[0],
-            last_update[1],
-            last_update[2],
-            last_update[3],
-            last_update[4],
-            last_update[5],
-        )
-        fb.text(f"Stand: {yyyy:04}-{mo:02}-{dd:02} {hh:02}:{mm:02}:{ss:02}", 6, EPD_HEIGHT - 14, FG_COLOR)
+        hh, mm, ss = last_update[3], last_update[4], last_update[5]
+        fb.text(f"Stand: {hh:02}:{mm:02}:{ss:02}", 6, EPD_HEIGHT - 14, FG_COLOR)
 
 
 def show_message(display, lines):
