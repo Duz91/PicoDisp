@@ -37,7 +37,7 @@ COINGECKO_HISTORY_365D_URL = (
 )  # 365 Tage
 PRICE_REFRESH_SECONDS = 60  # Update-Intervall für Live-Preis
 SCREEN_SWAP_SECONDS = 60  # Wechselintervall zwischen 24h- und 365d-Ansicht
-LOOP_SLEEP_SECONDS = 5  # Hauptschleifen-Schlafdauer, um Screens zu wechseln
+LOOP_SLEEP_SECONDS = 0.9  # Hauptschleifen-Schlafdauer, um LED-Blinken (~200 ms) zu ermöglichen
 HISTORY_LENGTH_24H = 96  # ~96 Punkte (15min Raster)
 HISTORY_LENGTH_365D = 365  # Grobe Tagespunkte (oder weniger)
 HISTORY_FETCH_TIMEOUT = 8  # Sekunden, um Startblocker zu vermeiden
