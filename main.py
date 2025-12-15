@@ -6,6 +6,7 @@ Voraussetzungen:
 - Hersteller-Treiberdatei für das E-Paper (z.B. epd2in9.py) im Dateisystem.
 - secrets.py mit WIFI_SSID / WIFI_PASSWORD (siehe secrets.example.py).
 """
+import gc
 import math
 import time
 
@@ -264,6 +265,7 @@ def fetch_history(url, target_len, label):
     resampled = _resample(prices, target_len)
     dur = time.ticks_diff(time.ticks_ms(), start_ms)
     log(f"Historie geladen: {len(resampled)} Punkte ({label}), Dauer {dur} ms")
+    gc.collect()
     return resampled
 
 
@@ -473,7 +475,6 @@ def main():
     refresh_display = True  # Initial einmal rendern
 
     while True:
-        led.on()
         try:
             now_ms = time.ticks_ms()
             swap_due = time.ticks_diff(now_ms, last_swap) >= SCREEN_SWAP_SECONDS * 1000
@@ -490,6 +491,7 @@ def main():
                     f"(24h: {len(history_24h.data)}, 365d: {len(history_365d.data)})"
                 )
                 refresh_display = True
+                gc.collect()
 
             if swap_due:
                 is_long_view = not is_long_view
@@ -508,12 +510,22 @@ def main():
                 display.flush()
                 refresh_display = False
         except Exception as exc:
+            # Bei OSError(12) (ENOMEM) versuchen wir, Speicher freizugeben und weiterzulaufen.
+            if isinstance(exc, OSError) and exc.args and exc.args[0] == 12:
+                log("OSError 12 (Speicher) erkannt, führe gc.collect() aus")
+                gc.collect()
+                time.sleep(1)
+                continue
             display.fb.fill(BG_COLOR)
             display.fb.text("Fehler:", 6, 6, FG_COLOR)
             display.fb.text(repr(exc)[:EPD_WIDTH // 6], 6, 22, FG_COLOR)
             display.flush()
         finally:
-            led.off()
+            # LED-Status: beim Screen-Wechsel dauerhaft an, sonst Blink mit ~200 ms.
+            if "swap_due" in locals() and swap_due:
+                led.on()
+            else:
+                led.value((time.ticks_ms() // 200) & 1)
         time.sleep(LOOP_SLEEP_SECONDS)
 
 
