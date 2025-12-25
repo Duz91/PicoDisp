@@ -436,10 +436,16 @@ def draw_price_full(display, price, last_update):
     price_text = f"{price_int:,.0f} EUR"
     scale = 3
     text_width = len(price_text) * 8 * scale
+    text_height = 8 * scale
     x = max(6, (EPD_WIDTH - text_width) // 2)
-    y = max(10, (EPD_HEIGHT // 2) - (4 * scale))
+    y = max(20, (EPD_HEIGHT // 2) - (text_height // 2))
+    # Überschrift
     fb.text("BTC", 6, 6, FG_COLOR)
-    draw_text_scaled(fb, price_text, x, y, scale=scale, color=FG_COLOR, bg=BG_COLOR)
+    # Breiter Balken hinter dem Preis (invertierte Farben)
+    pad_x = 14
+    pad_y = 10
+    fb.fill_rect(x - pad_x, y - pad_y, text_width + 2 * pad_x, text_height + 2 * pad_y, FG_COLOR)
+    draw_text_scaled(fb, price_text, x, y, scale=scale, color=BG_COLOR, bg=FG_COLOR)
     draw_footer(fb, last_update)
 
 def show_message(display, lines):
