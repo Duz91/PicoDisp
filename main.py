@@ -37,9 +37,10 @@ COINGECKO_HISTORY_365D_URL = (
 )  # 365 Tage
 PRICE_REFRESH_SECONDS = 60  # Update-Intervall für Live-Preis
 SCREEN_SWAP_SECONDS = 60  # Wechselintervall zwischen 24h- und 365d-Ansicht
-LOOP_SLEEP_SECONDS = 0.9  # Hauptschleifen-Schlafdauer, um LED-Blinken (~200 ms) zu ermöglichen
+LOOP_SLEEP_SECONDS = 0.2  # Hauptschleifen-Schlafdauer, um LED-Blinken (~200 ms) zu ermöglichen
 HISTORY_LENGTH_24H = 96  # ~96 Punkte (15min Raster)
 HISTORY_LENGTH_365D = 365  # Grobe Tagespunkte (oder weniger)
+RAW_HISTORY_24H_LEN = int(24 * 3600 // PRICE_REFRESH_SECONDS)  # Minutenauflösung für 24h
 HISTORY_FETCH_TIMEOUT = 8  # Sekunden, um Startblocker zu vermeiden
 NTP_RETRIES = 3
 NTP_HOST = "pool.ntp.org"
@@ -269,6 +270,10 @@ def fetch_history(url, target_len, label):
     return resampled
 
 
+def _resample_into_ring(raw_values, target_len, ring):
+    ring.data = _resample(raw_values, target_len) if raw_values else []
+
+
 def draw_chart(fb, history, span_label):
     # Linken Rand vergrößern für Y-Achsen-Beschriftung
     chart_left = 55
@@ -422,6 +427,21 @@ def draw_footer(fb, last_update):
         )
         fb.text(f"Stand: {yyyy:04}-{mo:02}-{dd:02} {hh:02}:{mm:02}:{ss:02}", 6, EPD_HEIGHT - 14, FG_COLOR)
 
+
+def draw_price_full(display, price, last_update):
+    """Zeigt den Preis großflächig an, mit Datum in der Ecke."""
+    fb = display.fb
+    fb.fill(BG_COLOR)
+    price_int = int(price)
+    price_text = f"{price_int:,.0f} EUR"
+    scale = 3
+    text_width = len(price_text) * 8 * scale
+    x = max(6, (EPD_WIDTH - text_width) // 2)
+    y = max(10, (EPD_HEIGHT // 2) - (4 * scale))
+    fb.text("BTC", 6, 6, FG_COLOR)
+    draw_text_scaled(fb, price_text, x, y, scale=scale, color=FG_COLOR, bg=BG_COLOR)
+    draw_footer(fb, last_update)
+
 def show_message(display, lines):
     display.fb.fill(BG_COLOR)
     y = 10
@@ -436,13 +456,16 @@ def main():
     wlan = connect_wifi()
     sync_time()
     display = create_display()
-    history_24h = RingBuffer(HISTORY_LENGTH_24H)
-    history_365d = RingBuffer(HISTORY_LENGTH_365D)
+    history_24h_raw = RingBuffer(RAW_HISTORY_24H_LEN)  # Minuten-Granularität für 24h
+    history_24h = RingBuffer(HISTORY_LENGTH_24H)  # Resample für das Chart
+    history_365d = RingBuffer(HISTORY_LENGTH_365D)  # Tageswerte
     led = Pin("LED", Pin.OUT)
     last_update = None
     show_message(display, ["Lade Historie 24h...", "Bitte warten"])
     try:
-        history_24h.extend(fetch_history(COINGECKO_HISTORY_24H_URL, HISTORY_LENGTH_24H, "24h"))
+        hist24 = fetch_history(COINGECKO_HISTORY_24H_URL, HISTORY_LENGTH_24H, "24h")
+        history_24h_raw.extend(hist24)
+        _resample_into_ring(history_24h_raw.data, HISTORY_LENGTH_24H, history_24h)
     except Exception as exc:
         # Falls der historische Abruf fehlschlägt, weiter mit Live-Daten
         show_message(display, ["Historie fehlgeschlagen", repr(exc)[:26]])
@@ -466,10 +489,13 @@ def main():
     now_ms = time.ticks_ms()
     last_price_ms = now_ms
     last_update = _now_local_berlin()
-    history_24h.append(current_price)
-    history_365d.append(current_price)
+    history_24h_raw.append(current_price)
+    _resample_into_ring(history_24h_raw.data, HISTORY_LENGTH_24H, history_24h)
+    # Für 365d merken wir den Start-Tag; tägliche Updates folgen in der Schleife.
+    last_day_365 = _now_local_berlin()[2]
 
-    is_long_view = False  # False=24h, True=365d
+    views = ("24h", "365d", "price")
+    view_index = 0  # 0=24h,1=365d,2=price
     last_swap = time.ticks_ms()
 
     refresh_display = True  # Initial einmal rendern
@@ -484,29 +510,37 @@ def main():
                 current_price = fetch_price_eur()
                 last_price_ms = time.ticks_ms()
                 last_update = _now_local_berlin()
-                history_24h.append(current_price)
-                history_365d.append(current_price)
+                history_24h_raw.append(current_price)
+                _resample_into_ring(history_24h_raw.data, HISTORY_LENGTH_24H, history_24h)
+                # 365d nur täglich updaten
+                current_day = last_update[2]
+                if current_day != last_day_365:
+                    history_365d.append(current_price)
+                    last_day_365 = current_day
                 log(
                     f"Preis aktualisiert: {current_price:.2f} EUR "
-                    f"(24h: {len(history_24h.data)}, 365d: {len(history_365d.data)})"
+                    f"(24h: {len(history_24h_raw.data)}, 365d: {len(history_365d.data)})"
                 )
                 refresh_display = True
                 gc.collect()
 
             if swap_due:
-                is_long_view = not is_long_view
+                view_index = (view_index + 1) % len(views)
                 last_swap = now_ms
-                log(f"Wechsel auf {'365d' if is_long_view else '24h'}-Ansicht")
+                log(f"Wechsel auf {views[view_index]}-Ansicht")
                 refresh_display = True
 
             if refresh_display:
-                active_history = history_365d if is_long_view else history_24h
-                span_label = "365d" if is_long_view else "24h"
-
-                display.fb.fill(BG_COLOR)
-                draw_header(display.fb, current_price)
-                draw_chart(display.fb, active_history, span_label)
-                draw_footer(display.fb, last_update)
+                active_view = views[view_index]
+                if active_view == "price":
+                    draw_price_full(display, current_price, last_update)
+                else:
+                    active_history = history_365d if active_view == "365d" else history_24h
+                    span_label = active_view
+                    display.fb.fill(BG_COLOR)
+                    draw_header(display.fb, current_price)
+                    draw_chart(display.fb, active_history, span_label)
+                    draw_footer(display.fb, last_update)
                 display.flush()
                 refresh_display = False
         except Exception as exc:
